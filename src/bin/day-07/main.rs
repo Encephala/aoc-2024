@@ -22,7 +22,7 @@ fn parse_input(input: &str) -> Vec<Equation> {
     return result;
 }
 
-fn equation_can_be_valid(expected_result: usize, numbers: Vec<usize>) -> bool {
+fn equation_can_be_valid(expected_result: usize, numbers: &[usize]) -> bool {
     let number_of_operators = (numbers.len() - 1) as u32;
 
     // Mask is a binary representation of whether to choose '+' (0) or '*' (1)
@@ -54,7 +54,7 @@ fn part_1(input: &str) -> usize {
     let mut sum_of_results = 0;
 
     for Equation(expected_result, numbers) in equations {
-        if equation_can_be_valid(expected_result, numbers) {
+        if equation_can_be_valid(expected_result, &numbers) {
             sum_of_results += expected_result;
         }
     }
@@ -62,79 +62,98 @@ fn part_1(input: &str) -> usize {
     return sum_of_results;
 }
 
-fn all_possible_concatenations(numbers: &[usize]) -> Vec<Vec<usize>> {
-    println!("Finding all concatenations in {numbers:?}");
+fn concatenate(left: usize, right: usize) -> usize {
+    let concatenated = left.to_string() + &right.to_string();
 
-    // Base cases
-    if numbers.is_empty() {
-        return vec![];
-    }
+    return concatenated.parse::<usize>().unwrap();
+}
 
-    if numbers.len() == 1 {
-        return vec![numbers.to_vec()];
-    }
+// I thought concatenation was always done as pre-processing,
+// but it's not.
+// 6 * 8 || 6 * 15 = 68 || 6 * 15 = 686 * 15 = 7290, valid in the test input
+// I interpreted that as 6 * 86 * 15 = 7740, invalid in the test input
+// fn all_possible_concatenations(numbers: &[usize]) -> Vec<Vec<usize>> {
+//     // println!("Finding all concatenations in {numbers:?}");
 
-    let mut result = vec![];
+//     // Base cases
+//     if numbers.is_empty() {
+//         // println!("Input empty, no combinations found");
+//         return vec![vec![]];
+//     }
 
-    // TODO: This isn't right
-    // Just concatenate the first two numbers or don't,
-    // Then recurse and append these vectors
-    for i in 1..numbers.len() - 1 {
-        dbg!(i);
-        let head = numbers[..i].to_vec();
+//     if numbers.len() == 1 {
+//         // println!("Input single digit, found {:?}", vec![vec![numbers[0]]]);
+//         return vec![vec![numbers[0]]];
+//     }
 
-        let mut head_no_concat = head.clone();
+//     let mut result = vec![];
 
-        head_no_concat.extend(&numbers[i..i + 2]);
+//     // General case 1: no concatenation
+//     let head_no_concat = vec![numbers[0]];
 
-        let mut head_yes_concat = head.clone();
+//     let all_tails_no_concat = all_possible_concatenations(&numbers[1..]);
 
-        head_yes_concat.push({
-            let left = numbers[i];
-            let right = numbers[i + 1];
+//     for tail in all_tails_no_concat {
+//         let mut new_possibility = head_no_concat.clone();
+//         new_possibility.extend(tail);
 
-            let concatenated = left.to_string() + &right.to_string();
+//         result.push(new_possibility);
+//     }
 
-            concatenated.parse::<usize>().unwrap()
-        });
+//     // General case 2: concatenation
+//     let head_yes_concat = vec![concatenate(numbers[0], numbers[1])];
 
-        let all_tails = all_possible_concatenations(&numbers[i + 2..]);
+//     let all_tails_yes_concat = all_possible_concatenations(&numbers[2..]);
 
-        for mut tail in all_tails {
-            let mut new_possibility_no_concat = head_no_concat.clone();
-            new_possibility_no_concat.append(&mut tail);
+//     for tail in all_tails_yes_concat {
+//         let mut new_possibility = head_yes_concat.clone();
+//         new_possibility.extend(tail);
 
-            result.push(new_possibility_no_concat);
+//         result.push(new_possibility);
+//     }
 
-            let mut new_possibility_yes_concat = head_no_concat.clone();
-            new_possibility_yes_concat.append(&mut tail);
+//     // println!("Found combinations: {result:?}");
 
-            result.push(new_possibility_yes_concat);
-        }
-    }
+//     return result;
+// }
 
-    println!("Found combinations: {result:?}");
+#[derive(Debug, Clone, Copy)]
+enum Operator {
+    Add,
+    Multiply,
+    Concatenate,
+}
+
+fn extend_vector_returning_value(vector: Vec<Operator>, extension: &[Operator]) -> Vec<Operator> {
+    let mut result = vector;
+
+    result.extend(extension);
 
     return result;
 }
 
-fn insert_concatenation(numbers: &[usize], at_index: usize) -> Vec<usize> {
+fn build_all_operator_sequences(length: usize) -> Vec<Vec<Operator>> {
+    use Operator::*;
+
     let mut result = vec![];
 
-    result.append(&mut numbers[..at_index].to_vec());
+    // Base case
+    if length == 0 {
+        return vec![vec![]];
+    }
 
-    let concatenated_numbers = {
-        let left = numbers[at_index];
-        let right = numbers[at_index + 1];
+    let add_head = vec![Add];
+    let multiply_head = vec![Multiply];
+    let concatenate_head = vec![Concatenate];
 
-        let concatenated = left.to_string() + &right.to_string();
+    // General case
+    let tails = build_all_operator_sequences(length - 1);
 
-        concatenated.parse::<usize>().unwrap()
-    };
-
-    result.push(concatenated_numbers);
-
-    result.append(&mut numbers[at_index + 2..].to_vec());
+    for tail in &tails {
+        result.push(extend_vector_returning_value(add_head.clone(), &tail));
+        result.push(extend_vector_returning_value(multiply_head.clone(), &tail));
+        result.push(extend_vector_returning_value(concatenate_head.clone(), &tail));
+    }
 
     return result;
 }
@@ -145,15 +164,21 @@ fn part_2(input: &str) -> usize {
     let mut sum_of_results = 0;
 
     for Equation(expected_result, numbers) in equations {
-        // If the equation is valid, early `continue` the loop
-        // Else, insert concatenations and check the result
+        // Brute force solution but fuck it
+        for operator_sequence in build_all_operator_sequences(numbers.len() - 1) {
+            let mut result = numbers[0];
 
-        // Actually, the first case is a specific case of the second case,
-        // as in if we're looping through all possible combinations of inserting concatenations,
-        // not inserting any is just one of those combinations
+            for (i, operator) in operator_sequence.iter().enumerate() {
+                match operator {
+                    Operator::Add => { result += numbers[i + 1]; },
+                    Operator::Multiply => { result *= numbers[i + 1]; },
+                    Operator::Concatenate => {
+                        result = concatenate(result, numbers[i + 1])
+                    },
+                }
+            }
 
-        for combination in all_possible_concatenations(&numbers) {
-            if equation_can_be_valid(expected_result, combination) {
+            if result == expected_result {
                 sum_of_results += expected_result;
 
                 break;
@@ -181,7 +206,7 @@ fn main() {
 
     println!("Part 1: {result_1}");
 
-    let test_numbers = [0, 1, 2, 3, 4];
+    let result_2 = part_2(actual_input);
 
-    dbg!(&all_possible_concatenations(&test_numbers));
+    println!("Part 2: {result_2}");
 }
